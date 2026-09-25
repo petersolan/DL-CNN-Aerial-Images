@@ -14,10 +14,6 @@ This repository details the end-to-end computer vision pipeline developed for my
 
 ![Image Alt text](https://github.com/petersolan/DL-CNN-Aerial-Images/assets/59766852/701994db-dc31-4687-9388-cc0c1b443d80)
 
-to this:
-
-![Image Alt text](https://github.com/petersolan/DL-CNN-Aerial-Images/assets/59766852/fac1fca2-6094-466f-88dc-4ba0f90cd4f6)
-
 Beyond model training, this repository demonstrates how deep learning-based spatial classification can be integrated into automated **Data Engineering pipelines** to accelerate post-disaster geospatial data ingestion and rapid response workflows.
 
 ---
@@ -75,6 +71,8 @@ Validation was conducted on 200 labeled images (190 True Positive instances, 10 
 ## 📈 Final Test Results
 
 Evaluated on the held-out test set under calibrated parameters (Confidence `0.25`, IoU `0.50`):
+
+![Image Alt text](https://github.com/petersolan/DL-CNN-Aerial-Images/assets/59766852/fac1fca2-6094-466f-88dc-4ba0f90cd4f6)
 
 ### Confusion Matrix
 
