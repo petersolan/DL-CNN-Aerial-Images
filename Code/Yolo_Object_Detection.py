@@ -1,193 +1,194 @@
+from pathlib import Path
+from collections import namedtuple
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import glob
-import random
-import math
-from collections import namedtuple
 
-# Load Yolo
-modelConfiguration = "C:/Users/Peter/Documents/Ida/training/yolo_custom_detection/yolov3_testing.cfg"
-modelWeights = "C:/Users/Peter/Documents/Ida/training/yolo_custom_detection/yolov3_training_last.weights"
-net = cv2.dnn.readNet(modelConfiguration, modelWeights)
-
-# Name custom object
-classes = ["Tree"]
-
-# Images path
-images_path = glob.glob(r"C:\Users\Peter\Documents\Ida\valid_b\*.jpg")
-layer_names = net.getLayerNames()
-output_layers = [layer_names[i[0] - 1] for i in net.getUnconnectedOutLayers()]
-#colors = np.random.uniform(0, 255, size=(len(classes), 3))
-color = (255, 255, 255)
-
-# Define the `Detection` object
+# Data structure for storing detection pairs
 Detection = namedtuple("Detection", ["image_path", "gt", "pred"])
 
-# Insert here the path of your images #random.shuffle(images_path)
-# to store all coordinates
-data = [] 
-det_array = []
 
-# loop through all the images
-for img_path in images_path:
-    # Loading image
-    img = cv2.imread(img_path)
-    img = cv2.resize(img, None, fx=1, fy=1) # here manipulate size of display
-    height, width, channels = img.shape
+def get_output_layers(net: cv2.dnn.Net) -> list[str]:
+    """Retrieve output layer names in a way compatible with all OpenCV versions."""
+    layer_names = net.getLayerNames()
+    unconnected = net.getUnconnectedOutLayers()
+    if len(unconnected.shape) == 1:
+        return [layer_names[i - 1] for i in unconnected]
+    return [layer_names[i[0] - 1] for i in unconnected]
 
-    # Detecting objects
-    blob = cv2.dnn.blobFromImage(img, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
-    net.setInput(blob)
-    outs = net.forward(output_layers)
 
-    # Showing informations on the screen
-    mAP_df = pd.DataFrame(columns=['Confidences', 'IoU', 'TP', 'FP', 'Acc TP', 'Acc FP', 'Precision', 'Recall'])
-    class_ids = []
-    confidences = []
-    boxes = []
-    for out in outs:
-        for detection in out:
-            scores = detection[5:]
-            class_id = np.argmax(scores)
-            confidence = scores[class_id]
-            if confidence > 0.25:
-                # Object detected
-                #print(class_id)
-                center_x = int(detection[0] * width)
-                center_y = int(detection[1] * height)
-                w = int(detection[2] * width)
-                h = int(detection[3] * height)
+def calculate_iou(box_a: list[int], box_b: list[int]) -> float:
+    """Compute Intersection over Union (IoU) for two bounding boxes [x1, y1, x2, y2]."""
+    x_a = max(box_a[0], box_b[0])
+    y_a = max(box_a[1], box_b[1])
+    x_b = min(box_a[2], box_b[2])
+    y_b = min(box_a[3], box_b[3])
 
-                # Rectangle coordinates
-                x = int(center_x - w / 2)
-                y = int(center_y - h / 2)
-                
-                # Predicted coordinates
-                plwa = x
-                plha = y
-                plwb = x + w
-                plhb = y + h
+    inter_area = max(0, x_b - x_a + 1) * max(0, y_b - y_a + 1)
+    box_a_area = (box_a[2] - box_a[0] + 1) * (box_a[3] - box_a[1] + 1)
+    box_b_area = (box_b[2] - box_b[0] + 1) * (box_b[3] - box_b[1] + 1)
 
-                # Ground true coordinates
-                tlwa = int(0.25*width)
-                tlha = int(0.25*height)
-                tlwb = int(math.ceil(0.75*width))
-                tlhb = int(math.ceil(0.75*height))
+    union_area = float(box_a_area + box_b_area - inter_area)
+    return inter_area / union_area if union_area > 0 else 0.0
 
-                boxes.append([x, y, w, h])
-                confidences.append(float(confidence))
-                class_ids.append(class_id)
-                
-                pred_pixels = [plwa, plha, plwb, plhb]
-                gt_pixels = [tlwa, tlha, tlwb, tlhb]
-                det = Detection(img_path, gt_pixels, pred_pixels)
-                det_array.append(det)
 
-    def bb_intersection_over_union(boxA, boxB):
-       	# determine the (x, y)-coordinates of the intersection rectangle
-       	xA = max(boxA[0], boxB[0])
-       	yA = max(boxA[1], boxB[1])
-       	xB = min(boxA[2], boxB[2])
-       	yB = min(boxA[3], boxB[3])
-       	# compute the area of intersection rectangle
-       	interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
-       	# compute the area of both the prediction and ground-truth
-       	# rectangles
-       	boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
-       	boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
-       	# compute the intersection over union by taking the intersection
-       	# area and dividing it by the sum of prediction + ground-truth
-       	# areas - the interesection area
-       	iou = interArea / float(boxAArea + boxBArea - interArea)
-       	# return the intersection over union value
-       	return iou                       
-      
-    for detection in det_array:
-    # load the image
-    # compute the intersection over union and display it
-        iou = bb_intersection_over_union(detection.gt, detection.pred)
-    #print("{}: {:.4f}".format(img_path, iou))
-        #coor.append([img_path, detection.gt, detection.pred, max(confidences), iou])
-        # if not cv2.imwrite('./IoU/{}'.format(detection.image_path), image):
-        #    raise Exception("Could not write image")
-    indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.5)
-    print(indexes)
-    #font = cv2.FONT_HERSHEY_PLAIN
-    
-    for i in range(len(boxes)):
-        if i in indexes:
-            #x, y, w, h = boxes[i]
-            #label = str(classes[class_ids[i]])
-            #cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
-            #idx = np.argsort(confidences[0])[::-1][0]
-            data.append([img_path[-11:-4], plwa, plha, plwb, plhb, tlwa, tlha, tlwb, tlhb, max(confidences), iou])
-            #text = "{}, {:.1f}%".format(classes[idx], 100*(max(confidences)))
-            #cv2.putText(img, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1)
-            #print(idx)
-    else:
-        data.append([img_path[-11:-4], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-            
-    cv2.imshow("Image", img)   
-    key = cv2.waitKey(0)
-cv2.destroyAllWindows()
+def run_inference(
+    config_path: Path,
+    weights_path: Path,
+    images_dir: Path,
+    conf_threshold: float = 0.25,
+    nms_threshold: float = 0.5,
+) -> pd.DataFrame:
+    """Run YOLOv3 inference over a directory of images and collect metric outputs."""
+    if not config_path.exists() or not weights_path.exists():
+        raise FileNotFoundError("YOLO configuration or weights file not found.")
 
-# Translating data to dataframe and removing duplicates
-df = pd.DataFrame(data)
-# Renaming columns
-df.columns = ['name', 'plwa', 'plha', 'plwb', 'plhb', 'tlwa', 'tlha', 'tlwb',
-              'tlhb', 'con', 'iou']
-df = df.drop_duplicates(subset=['name'], keep='first')
-# Return and view dataframe without duplicates
-print(df)
+    net = cv2.dnn.readNet(str(config_path), str(weights_path))
+    output_layers = get_output_layers(net)
+    image_paths = list(images_dir.glob("*.jpg"))
 
-df = df.sort_values(by='con', ascending=False)
+    results = []
 
-# mAP calcualation:
-def calc_TP(row):
-    iou = row['iou']
-    if iou >= 0.5:
-    	result = 1
-    else:
-    	result = 0
-    return result
-    
-def calc_FP(row):
-	iou = row['iou']
-	if iou < 0.5:
-		result = 1
-	else:
-		result = 0
-	return result
+    for img_path in image_paths:
+        img = cv2.imread(str(img_path))
+        if img is None:
+            continue
 
-df['TP'] = df.apply(calc_TP, axis=1)
-df['FP'] = df.apply(calc_FP, axis=1)
-df['Acc TP'] = df['TP'].cumsum(axis=0)
-df['Acc FP'] = df['FP'].cumsum(axis=0)
+        height, width, _ = img.shape
 
-def calc_Acc_Precision(row):
-    precision = row['Acc TP'] / (row['Acc TP'] + row['Acc FP'])
-    return precision
-    
-def calc_Acc_Recall(row):
-    recall = row['Acc TP'] / (df.count()[0])
-    return recall
-    
-df['Precision'] = df.apply(calc_Acc_Precision, axis=1)
-df['Recall'] = df.apply(calc_Acc_Recall, axis=1)
-    
-import matplotlib.pyplot as plt
-df.plot(kind='line',x='Recall',y='Precision',color='red')
-plt.show()
+        # Create input blob and forward pass
+        blob = cv2.dnn.blobFromImage(
+            img, 0.00392, (416, 416), (0, 0, 0), True, crop=False
+        )
+        net.setInput(blob)
+        outs = net.forward(output_layers)
 
-def calc_PR_AUC(x, y):
-   sm = 0
-   for i in range(1, len(x)):
-       h = x[i] - x[i-1]
-       sm += h * (y[i-1] + y[i]) / 2
-   return sm
+        boxes = []
+        confidences = []
+        class_ids = []
 
-calc_PR_AUC(df['Recall'], df['Precision'])
+        # Parse output detections
+        for out in outs:
+            for detection in out:
+                scores = detection[5:]
+                class_id = np.argmax(scores)
+                confidence = float(scores[class_id])
 
-# Saving to csv file
-df.to_csv("output_combined.csv")
+                if confidence > conf_threshold:
+                    center_x = int(detection[0] * width)
+                    center_y = int(detection[1] * height)
+                    w = int(detection[2] * width)
+                    h = int(detection[3] * height)
+
+                    x = int(center_x - w / 2)
+                    y = int(center_y - h / 2)
+
+                    boxes.append([x, y, w, h])
+                    confidences.append(confidence)
+                    class_ids.append(class_id)
+
+        # Apply Non-Maximum Suppression (NMS)
+        indices = cv2.dnn.NMSBoxes(
+            boxes, confidences, conf_threshold, nms_threshold
+        )
+
+        # Dummy ground truth bounding box (center region: [25%w, 25%h, 75%w, 75%h])
+        gt_box = [
+            int(0.25 * width),
+            int(0.25 * height),
+            int(0.75 * width),
+            int(0.75 * height),
+        ]
+
+        if len(indices) > 0:
+            # Take top detection post-NMS
+            idx = indices.flatten()[0]
+            x, y, w, h = boxes[idx]
+            pred_box = [x, y, x + w, y + h]
+            iou = calculate_iou(gt_box, pred_box)
+            max_conf = confidences[idx]
+
+            results.append(
+                [img_path.stem] + pred_box + gt_box + [max_conf, iou]
+            )
+        else:
+            # Negative detection fallback
+            results.append([img_path.stem] + [0] * 8 + [0.0, 0.0])
+
+    columns = [
+        "name",
+        "plwa",
+        "plha",
+        "plwb",
+        "plhb",
+        "tlwa",
+        "tlha",
+        "tlwb",
+        "tlhb",
+        "con",
+        "iou",
+    ]
+    df = pd.DataFrame(results, columns=columns)
+    return df.drop_duplicates(subset=["name"], keep="first")
+
+
+def compute_metrics(df: pd.DataFrame, iou_threshold: float = 0.5) -> pd.DataFrame:
+    """Vectorized calculation of Precision-Recall metrics across sorted confidences."""
+    df = df.sort_values(by="con", ascending=False).reset_index(drop=True)
+
+    # Vectorized True Positive / False Positive assignment
+    df["TP"] = np.where(df["iou"] >= iou_threshold, 1, 0)
+    df["FP"] = np.where(df["iou"] < iou_threshold, 1, 0)
+
+    # Cumulative sums for precision-recall curves
+    df["Acc TP"] = df["TP"].cumsum()
+    df["Acc FP"] = df["FP"].cumsum()
+
+    total_instances = len(df)
+    df["Precision"] = df["Acc TP"] / (df["Acc TP"] + df["Acc FP"])
+    df["Recall"] = df["Acc TP"] / total_instances
+
+    return df
+
+
+def main():
+    base_dir = Path(__file__).parent
+    config_path = base_dir / "yolo_custom_detection" / "yolov3_testing.cfg"
+    weights_path = base_dir / "yolo_custom_detection" / "yolov3_training_last.weights"
+    images_dir = base_dir / "valid_b"
+
+    try:
+        df_results = run_inference(config_path, weights_path, images_dir)
+        df_metrics = compute_metrics(df_results)
+
+        # Compute Precision-Recall Area Under Curve (PR-AUC) using NumPy trapz
+        pr_auc = np.trapz(df_metrics["Precision"], df_metrics["Recall"])
+        print(f"Calculated PR-AUC: {abs(pr_auc):.4f}")
+
+        # Export metrics
+        output_csv = base_dir / "output_combined.csv"
+        df_metrics.to_csv(output_csv, index=False)
+        print(f"Results saved to: {output_csv.resolve()}")
+
+        # Plot Precision-Recall Curve
+        plt.figure(figsize=(8, 5))
+        plt.plot(
+            df_metrics["Recall"],
+            df_metrics["Precision"],
+            color="red",
+            label=f"AUC = {abs(pr_auc):.3f}",
+        )
+        plt.xlabel("Recall")
+        plt.ylabel("Precision")
+        plt.title("Precision-Recall Curve")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+    except FileNotFoundError as e:
+        print(f"Error running pipeline: {e}")
+
+
+if __name__ == "__main__":
+    main()
