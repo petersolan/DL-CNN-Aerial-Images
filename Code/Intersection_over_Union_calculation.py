@@ -1,49 +1,64 @@
+from pathlib import Path
 import numpy as np
-lab = np.loadtxt("C:/Users/Peter/Documents/Ida/yolo_custom_detection/labels.csv", delimiter=',', dtype=int)
-pre = np.loadtxt("C:/Users/Peter/Documents/Ida/yolo_custom_detection/predictions.csv", delimiter=',', dtype=int)
-a = np.array(lab)
-b = np.array(pre)
 
-def batch_iou(a, b, epsilon=1e-5):
-    """ Given two arrays `a` and `b` where each row contains a bounding
-        box defined as a list of four numbers:
-            [x1,y1,x2,y2]
-        where:
-            x1,y1 represent the upper left corner
-            x2,y2 represent the lower right corner
-        It returns the Intersect of Union scores for each corresponding
-        pair of boxes.
+
+def compute_batch_iou(
+    boxes_a: np.ndarray, boxes_b: np.ndarray, epsilon: float = 1e-5
+) -> np.ndarray:
+    """Calculate Intersection over Union (IoU) scores for pairs of bounding boxes.
 
     Args:
-        a:          (numpy array) each row containing [x1,y1,x2,y2] coordinates
-        b:          (numpy array) each row containing [x1,y1,x2,y2] coordinates
-        epsilon:    (float) Small value to prevent division by zero
+        boxes_a (np.ndarray): Array of shape (N, 4) with bounding boxes [x1, y1, x2, y2].
+        boxes_b (np.ndarray): Array of shape (N, 4) with bounding boxes [x1, y1, x2, y2].
+        epsilon (float, optional): Small constant to avoid division by zero. Defaults to 1e-5.
 
     Returns:
-        (numpy array) The Intersect of Union scores for each pair of bounding
-        boxes.
+        np.ndarray: Vector of shape (N,) containing IoU scores ranging from 0.0 to 1.0.
     """
-    # COORDINATES OF THE INTERSECTION BOXES
-    for i in a,b():
-        x1 = np.array([a[:, 0], b[:, 0]]).max(axis=0)
-        y1 = np.array([a[:, 1], b[:, 1]]).max(axis=0)
-        x2 = np.array([a[:, 2], b[:, 2]]).min(axis=0)
-        y2 = np.array([a[:, 3], b[:, 3]]).min(axis=0)
+    # 1. Coordinates of intersection rectangles
+    x1 = np.maximum(boxes_a[:, 0], boxes_b[:, 0])
+    y1 = np.maximum(boxes_a[:, 1], boxes_b[:, 1])
+    x2 = np.minimum(boxes_a[:, 2], boxes_b[:, 2])
+    y2 = np.minimum(boxes_a[:, 3], boxes_b[:, 3])
 
-    # AREAS OF OVERLAP - Area where the boxes intersect
-        width = (x2 - x1)
-        height = (y2 - y1)
+    # 2. Compute intersection areas (clip negative values where boxes do not overlap)
+    intersection_width = np.maximum(0.0, x2 - x1)
+    intersection_height = np.maximum(0.0, y2 - y1)
+    area_intersection = intersection_width * intersection_height
 
-    # handle case where there is NO overlap
-        width[width < 0] = 0
-        height[height < 0] = 0
-        area_overlap = width * height
+    # 3. Compute individual box areas
+    area_a = (boxes_a[:, 2] - boxes_a[:, 0]) * (boxes_a[:, 3] - boxes_a[:, 1])
+    area_b = (boxes_b[:, 2] - boxes_b[:, 0]) * (boxes_b[:, 3] - boxes_b[:, 1])
 
-    # COMBINED AREAS
-        area_a = (a[:, 2] - a[:, 0]) * (a[:, 3] - a[:, 1])
-        area_b = (b[:, 2] - b[:, 0]) * (b[:, 3] - b[:, 1])
-        area_combined = area_a + area_b - area_overlap
+    # 4. Compute union area
+    area_union = area_a + area_b - area_intersection
 
-    # RATIO OF AREA OF OVERLAP OVER COMBINED AREA
-        iou = area_overlap / (area_combined + epsilon)
-        print(iou)
+    # 5. Calculate IoU ratio
+    iou = area_intersection / (area_union + epsilon)
+    return iou
+
+
+def main():
+    # Define relative paths for data portability
+    data_dir = Path(__file__).parent / "data"
+    labels_path = data_dir / "labels.csv"
+    predictions_path = data_dir / "predictions.csv"
+
+    if not labels_path.exists() or not predictions_path.exists():
+        print(f"Data files not found in: {data_dir.resolve()}")
+        return
+
+    # Load arrays directly as float/int
+    labels = np.loadtxt(labels_path, delimiter=",", dtype=float)
+    predictions = np.loadtxt(predictions_path, delimiter=",", dtype=float)
+
+    # Compute batch IoUs
+    iou_scores = compute_batch_iou(labels, predictions)
+
+    print("Batch IoU Calculation Complete:")
+    print(f"Mean IoU: {np.mean(iou_scores):.4f}")
+    print(f"Sample IoUs: {iou_scores[:5]}")
+
+
+if __name__ == "__main__":
+    main()
